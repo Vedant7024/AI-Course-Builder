@@ -1,103 +1,62 @@
-async function searchResearch(topic) {
-  const baseUrl = process.env.SEARXNG_URL;
+function getBaseUrl() {
+  const base = process.env.SEARXNG_URL;
+  if (!base) throw new Error("SEARXNG_URL is missing from environment variables");
+  return base.replace(/\/$/, "");
+}
 
-  if (!baseUrl) {
-    console.warn("SearXNG_URL is not configured. Research skipped.");
-    return [];
+async function searxSearch(params) {
+  const url = `${getBaseUrl()}/search?${new URLSearchParams({
+    ...params,
+    format: "json",
+  })}`;
+
+  // Render free plan pe SearXNG sleep ho jata hai, isliye lamba timeout
+  const res = await fetch(url, { signal: AbortSignal.timeout(45000) });
+  if (!res.ok) {
+    throw new Error(`SearXNG returned HTTP ${res.status}`);
   }
+  const data = await res.json();
+  return data.results || [];
+}
 
-  const url = new URL("/search", baseUrl);
-  url.searchParams.set("q", `${topic} tutorial documentation`);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("safesearch", "1");
+async function searchResearch(topic) {
+  const results = await searxSearch({ q: topic, language: "en" });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  return results.slice(0, 6).map((r) => ({
+    title: r.title || "",
+    url: r.url || "",
+    content: (r.content || "").slice(0, 300),
+  }));
+}
 
+function extractVideoId(url) {
   try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-      },
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`SearXNG returned HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!Array.isArray(data.results)) {
-      throw new Error("Invalid SearXNG response.");
-    }
-
-    return data.results
-      .filter((item) => item.title && item.url)
-      .slice(0, 6)
-      .map((item) => ({
-        title: String(item.title).slice(0, 250),
-        url: String(item.url).slice(0, 2000),
-        content: String(item.content || "").slice(0, 800),
-      }));
-  } catch (error) {
-    console.error("Research search failed:", error.message);
-    throw new Error(
-      "Web research failed. Check your SearXNG URL and JSON API settings."
-    );
-  } finally {
-    clearTimeout(timeout);
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    return u.searchParams.get("v");
+  } catch {
+    return null;
   }
 }
 
-async function searchYouTubeVideos(topic) {
-  const baseUrl = process.env.SEARXNG_URL;
-
-  if (!baseUrl) {
-    throw new Error("SEARXNG_URL is missing from backend .env");
-  }
-
-  const url = new URL("/search", baseUrl);
-
-  url.searchParams.set(
-    "q",
-    `site:youtube.com/watch ${topic} tutorial`
-  );
-  url.searchParams.set("format", "json");
-  url.searchParams.set("safesearch", "1");
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-    },
-    signal: AbortSignal.timeout(10000),
+async function searchYouTubeVideos(query) {
+  const results = await searxSearch({
+    q: `${query} tutorial`,
+    categories: "videos",
   });
 
-  if (!response.ok) {
-    throw new Error(`YouTube search failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-
-  if (!Array.isArray(data.results)) {
-    throw new Error("Invalid YouTube search response.");
-  }
-
-  return data.results
-    .filter(
-      (item) =>
-        item.title &&
-        item.url &&
-        /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/.test(
-          item.url
-        )
-    )
-    .slice(0, 5)
-    .map((item) => ({
-      title: String(item.title).slice(0, 250),
-      url: item.url,
-      description: String(item.content || "").slice(0, 500),
-    }));
+  return results
+    .filter((r) => /youtube\.com|youtu\.be/.test(r.url || ""))
+    .slice(0, 6)
+    .map((r) => {
+      const videoId = extractVideoId(r.url);
+      return {
+        title: r.title || "",
+        url: r.url,
+        videoId,
+        thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null,
+      };
+    });
 }
 
 module.exports = { searchResearch, searchYouTubeVideos };
