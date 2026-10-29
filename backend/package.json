@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "author": "Vedant Sharma",
+  "author": "",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -10,7 +10,6 @@
     "dev": "nodemon server.js"
   },
   "keywords": [],
-  "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
