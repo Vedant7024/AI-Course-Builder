@@ -1,13 +1,10 @@
-
 use_default_settings: true
 
-
 server:
-  secret_key: "YOUR_RANDOM_SECRET_KEY"
   limiter: false
   public_instance: false
   image_proxy: false
-
+  secret_key: "YOUR_UNIQUE_RANDOM_SECRET"
 
 search:
   formats:
