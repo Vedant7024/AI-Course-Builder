@@ -2,67 +2,46 @@
 const Course = require("../models/Course");
 const { generateCourse } = require("../services/groqService");
 const { searchResearch } = require("../services/researchService");
+const Course = require("../models/Course");
+const { generateCourse } = require("../services/groqService");
 
-async function createCourse(req, res, next) {
+const createCourse = async (req, res) => {
   try {
-    const { topic, level = "Beginner", lessonCount = 3 } = req.body;
+    const { topic, level, lessonCount } = req.body;
 
-    if (typeof topic !== "string" || !topic.trim() || topic.trim().length > 200) {
+    if (!topic || !topic.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Topic is required and must be under 200 characters.",
+        message: "Topic is required.",
       });
     }
 
-    if (!["Beginner", "Intermediate", "Advanced"].includes(level)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please select a valid difficulty level.",
-      });
-    }
+    const safeLevel = ["Beginner", "Intermediate", "Advanced"].includes(level)
+      ? level
+      : "Beginner";
 
-    if (![2, 3].includes(Number(lessonCount))) {
-      return res.status(400).json({
-        success: false,
-        message: "Lesson count must be 2 or 3.",
-      });
-    }
+    const count = Math.min(Math.max(parseInt(lessonCount) || 3, 1), 8);
 
-    if (!process.env.GROQ_API_KEY) {
-      return res.status(500).json({
-        success: false,
-        message: "Groq API key is not configured.",
-      });
-    }
-
-    
-    const researchSources = await searchResearch(topic);
-
-    const generated = await generateCourse(
-      topic.trim(),
-      level,
-      Number(lessonCount),
-      researchSources,
-    );
+    const generated = await generateCourse(topic.trim(), safeLevel, count);
 
     const course = await Course.create({
       title: generated.title,
       description: generated.description,
       topic: topic.trim(),
-      level,
+      level: safeLevel,
       lessons: generated.lessons,
       createdBy: req.user._id,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Course generated successfully.",
-      course,
-    });
+    return res.status(201).json({ success: true, course });
   } catch (error) {
-    next(error);
+    console.error("createCourse error:", error);
+    return res.status(502).json({
+      success: false,
+      message: "AI course generation failed. Please try again.",
+    });
   }
-}
+};
 
 async function getMyCourses(req, res, next) {
   try {
