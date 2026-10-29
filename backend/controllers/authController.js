@@ -84,6 +84,7 @@ function login(req, res, next) {
 }
 
 // Logout
+
 function logout(req, res, next) {
   req.logout((error) => {
     if (error) return next(error);
@@ -92,9 +93,10 @@ function logout(req, res, next) {
       if (sessionError) return next(sessionError);
 
       res.clearCookie("course.sid", {
+        path: "/",
         httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
+        sameSite: "none",
+        secure: true,
       });
 
       return res.json({
@@ -104,6 +106,7 @@ function logout(req, res, next) {
     });
   });
 }
+
 
 // Get the current logged-in user
 function me(req, res) {
