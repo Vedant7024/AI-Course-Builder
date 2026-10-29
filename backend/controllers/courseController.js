@@ -2,8 +2,6 @@
 const Course = require("../models/Course");
 const { generateCourse } = require("../services/groqService");
 const { searchResearch } = require("../services/researchService");
-const Course = require("../models/Course");
-const { generateCourse } = require("../services/groqService");
 
 const createCourse = async (req, res) => {
   try {
@@ -111,17 +109,6 @@ async function updateLessonProgress(req, res, next) {
       });
     }
 
-    const course = await Course.findOne({
-      _id: id,
-      createdBy: req.user._id,
-    });
-
-    if (!course) {
-      return res.status(404).json({
-        success: false,
-        message: "Course not found.",
-      });
-    }
 
     const lessonExists = course.lessons.some(
       (lesson) => lesson._id.toString() === lessonId
