@@ -9,12 +9,24 @@ search:
   formats:
     - html
     - json
+  # Engine fail hone par ghanton tak band na rahe (default bahut lamba hota hai)
+  suspended_times:
+    SearxEngineAccessDenied: 60
+    SearxEngineCaptcha: 60
+    SearxEngineTooManyRequests: 60
+    cf_SearxEngineCaptcha: 60
+    cf_SearxEngineAccessDenied: 60
+    recaptcha_SearxEngineCaptcha: 60
 
-  outgoing:
-  request_timeout: 6.0
-  max_request_timeout: 12.0
+# IMPORTANT: "outgoing" top-level par hona chahiye (pehle search ke andar tha, isliye apply nahi hota tha)
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 20.0
 
 engines:
+  # YouTube videos ke liye
+  - name: youtube
+    disabled: false
   - name: duckduckgo
     disabled: true
   - name: duckduckgo videos

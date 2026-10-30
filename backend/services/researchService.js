@@ -1,4 +1,3 @@
-
 const videoCache = new Map();
 
 const CACHE_MS = 1000 * 60 * 60 * 6;
@@ -49,6 +48,17 @@ async function searxSearch(params) {
 
   const data = await response.json();
 
+  // Debugging: batata hai kaun sa engine fail/timeout hua
+  if (
+    Array.isArray(data.unresponsive_engines) &&
+    data.unresponsive_engines.length > 0
+  ) {
+    console.warn(
+      "SearXNG unresponsive engines:",
+      JSON.stringify(data.unresponsive_engines)
+    );
+  }
+
   return Array.isArray(data.results)
     ? data.results
     : [];
@@ -71,7 +81,9 @@ function extractVideoId(url) {
 
     if (
       hostname === "youtube.com" ||
-      hostname.endsWith(".youtube.com")
+      hostname.endsWith(".youtube.com") ||
+      hostname === "youtube-nocookie.com" ||
+      hostname.endsWith(".youtube-nocookie.com")
     ) {
       if (parsed.pathname === "/watch") {
         return parsed.searchParams.get("v");
@@ -100,9 +112,10 @@ function pickYouTubeVideos(results) {
   const seen = new Set();
 
   for (const result of results) {
-    const url = result.url || "";
-
-    const videoId = extractVideoId(url);
+    // youtube engine kabhi url me aur kabhi iframe_src me link deta hai
+    const videoId =
+      extractVideoId(result.url || "") ||
+      extractVideoId(result.iframe_src || "");
 
     if (!videoId || seen.has(videoId)) {
       continue;
@@ -113,7 +126,7 @@ function pickYouTubeVideos(results) {
     videos.push({
       title: result.title || "YouTube tutorial",
 
-      url,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
 
       videoId,
 
@@ -127,6 +140,50 @@ function pickYouTubeVideos(results) {
   }
 
   return videos;
+}
+
+// Fallback: YouTube Data API (sirf tab chalega jab YOUTUBE_API_KEY set ho)
+async function youtubeApiSearch(query) {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
+  if (!apiKey) {
+    return [];
+  }
+
+  const url = `https://www.googleapis.com/youtube/v3/search?${new URLSearchParams(
+    {
+      part: "snippet",
+      type: "video",
+      maxResults: "6",
+      videoEmbeddable: "true",
+      q: `${query} tutorial`,
+      key: apiKey,
+    }
+  )}`;
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `YouTube API returned HTTP ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+
+  return (data.items || [])
+    .filter((item) => item.id?.videoId)
+    .map((item) => ({
+      title: item.snippet?.title || "YouTube tutorial",
+      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+      videoId: item.id.videoId,
+      thumbnail: `https://img.youtube.com/vi/${item.id.videoId}/hqdefault.jpg`,
+      description: String(
+        item.snippet?.description || ""
+      ).slice(0, 300),
+    }));
 }
 
 // Search YouTube videos
@@ -166,12 +223,14 @@ async function searchYouTubeVideos(query) {
     },
 
     {
-      q: `site:youtube.com/watch ${cleanQuery} tutorial`,
+      q: shortQuery,
+      engines: "youtube",
+      categories: "videos",
       language: "en",
     },
 
     {
-      q: `${cleanQuery} tutorial youtube`,
+      q: `site:youtube.com/watch ${cleanQuery} tutorial`,
       language: "en",
     },
 
@@ -213,6 +272,30 @@ async function searchYouTubeVideos(query) {
     } catch (error) {
       console.error(
         "YouTube search error:",
+        error.message
+      );
+    }
+  }
+
+  // SearXNG se kuch na mile to YouTube API (agar key set ho) try karo
+  if (found.length === 0) {
+    try {
+      const apiVideos = await youtubeApiSearch(shortQuery);
+
+      console.log(
+        `YouTube API fallback returned ${apiVideos.length} videos`
+      );
+
+      for (const video of apiVideos) {
+        if (!seenIds.has(video.videoId)) {
+          seenIds.add(video.videoId);
+
+          found.push(video);
+        }
+      }
+    } catch (error) {
+      console.error(
+        "YouTube API fallback error:",
         error.message
       );
     }
