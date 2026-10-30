@@ -1,7 +1,12 @@
+
 import "./VideoList.css";
 
-export default function VideoList({ videos, activeId, onSelect }) {
-  // null/undefined aaye to bhi crash na ho
+export default function VideoList({
+  videos,
+  activeId,
+  onSelect,
+}) {
+  // Prevent errors if videos is undefined or null
   const list = Array.isArray(videos) ? videos : [];
 
   if (list.length === 0) {
@@ -10,37 +15,63 @@ export default function VideoList({ videos, activeId, onSelect }) {
 
   return (
     <div className="video-grid">
-      {list.map((v) => {
-        const thumb =
-          v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
+      {list.map((video) => {
+        const videoId = video.videoId;
+
+        if (!videoId) {
+          return null;
+        }
+
+        const thumbnail =
+          video.thumbnail ||
+          `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+        const isActive = activeId === videoId;
 
         return (
-          <div key={v.videoId} className="video-card">
+          <div key={videoId} className="video-card">
             <div className="video-frame">
-              {activeId === v.videoId ? (
+              {isActive ? (
                 <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${v.videoId}?autoplay=1&rel=0`}
-                  title={v.title || "YouTube video"}
-                  allow="autoplay; encrypted-media; picture-in-picture"
+                  src={`https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0`}
+                  title={video.title || "YouTube video"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
                 />
               ) : (
                 <button
                   type="button"
                   className="video-thumb"
-                  onClick={() => onSelect(v.videoId)}
-                  aria-label={`Play ${v.title || "video"}`}
+                  onClick={() => onSelect(videoId)}
+                  aria-label={`Play ${video.title || "video"}`}
                 >
-                  <img src={thumb} alt={v.title || "Video thumbnail"} />
-                  <span className="play-icon">▶</span>
+                  <img
+                    src={thumbnail}
+                    alt={video.title || "Video thumbnail"}
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.src =
+                        `https://img.youtube.com/vi/${videoId}/default.jpg`;
+                    }}
+                  />
+
+                  <span className="play-icon">
+                    ▶
+                  </span>
                 </button>
               )}
             </div>
 
-            <h3 className="video-title">{v.title}</h3>
+            <h3 className="video-title">
+              {video.title || "YouTube video"}
+            </h3>
 
-            {v.description && (
-              <p className="video-description">{v.description}</p>
+            {video.description && (
+              <p className="video-description">
+                {video.description}
+              </p>
             )}
           </div>
         );
