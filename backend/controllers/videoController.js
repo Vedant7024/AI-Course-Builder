@@ -1,3 +1,4 @@
+
 const Course = require("../models/Course");
 const { searchYouTubeVideos } = require("../services/researchService");
 const {
@@ -6,11 +7,8 @@ const {
 } = require("../services/ttsService");
 const { uploadAudio } = require("../services/cloudinaryService");
 const { prepareNarrationText } = require("../services/hinglishService");
-const {
-  generateLessonVideo,
-} = require("../services/videoGenerationService");
+const { generateLessonVideo } = require("../services/videoGenerationService");
 
-// Existing YouTube functionality
 async function getYouTubeVideos(req, res, next) {
   try {
     const { id } = req.params;
@@ -57,8 +55,6 @@ async function getYouTubeVideos(req, res, next) {
   }
 }
 
-// New AI lesson-video generation endpoint
-
 async function generateLessonVideoController(req, res, next) {
   let audioPath;
 
@@ -101,37 +97,23 @@ async function generateLessonVideoController(req, res, next) {
       });
     }
 
-    // Step 0: Script ko Hinglish me badlo
-    // narration = voice ke liye, captions = video ki slides ke liye
     const { narration, captions } = await prepareNarrationText({
       title: lesson.title,
       script: lesson.script,
     });
 
-    // Step 1: Generate lesson narration
-    audioPath = await generateLessonAudio(
-      narration,
-      lesson.title
-    );
+    audioPath = await generateLessonAudio(narration, lesson.title);
 
-    // Narration ki asli length (seconds) - video isi ke barabar banega
     let audioDuration = 0;
 
     try {
       audioDuration = getAudioDurationSeconds(audioPath);
-    } catch (durationError) {
-      console.warn(
-        "Could not read audio duration:",
-        durationError.message
-      );
+    } catch (error) {
+      console.warn("Audio duration error:", error.message);
     }
 
-    console.log("Narration duration (seconds):", audioDuration);
-
-    // Step 2: Upload narration to Cloudinary
     const audioUrl = await uploadAudio(audioPath);
 
-    // Step 3: Start Shotstack rendering
     const renderId = await generateLessonVideo({
       title: lesson.title,
       script: captions,
@@ -149,8 +131,6 @@ async function generateLessonVideoController(req, res, next) {
     next(error);
   }
 }
-
-
 
 async function getLessonVideoStatus(req, res, next) {
   try {
