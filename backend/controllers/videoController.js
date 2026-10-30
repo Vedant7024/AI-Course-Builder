@@ -1,8 +1,11 @@
-
 const Course = require("../models/Course");
 const { searchYouTubeVideos } = require("../services/researchService");
-const { generateLessonAudio } = require("../services/ttsService");
+const {
+  generateLessonAudio,
+  getAudioDurationSeconds,
+} = require("../services/ttsService");
 const { uploadAudio } = require("../services/cloudinaryService");
+const { prepareNarrationText } = require("../services/hinglishService");
 const {
   generateLessonVideo,
 } = require("../services/videoGenerationService");
@@ -98,11 +101,32 @@ async function generateLessonVideoController(req, res, next) {
       });
     }
 
+    // Step 0: Script ko Hinglish me badlo
+    // narration = voice ke liye, captions = video ki slides ke liye
+    const { narration, captions } = await prepareNarrationText({
+      title: lesson.title,
+      script: lesson.script,
+    });
+
     // Step 1: Generate lesson narration
     audioPath = await generateLessonAudio(
-      lesson.script,
+      narration,
       lesson.title
     );
+
+    // Narration ki asli length (seconds) - video isi ke barabar banega
+    let audioDuration = 0;
+
+    try {
+      audioDuration = getAudioDurationSeconds(audioPath);
+    } catch (durationError) {
+      console.warn(
+        "Could not read audio duration:",
+        durationError.message
+      );
+    }
+
+    console.log("Narration duration (seconds):", audioDuration);
 
     // Step 2: Upload narration to Cloudinary
     const audioUrl = await uploadAudio(audioPath);
@@ -110,9 +134,9 @@ async function generateLessonVideoController(req, res, next) {
     // Step 3: Start Shotstack rendering
     const renderId = await generateLessonVideo({
       title: lesson.title,
-      script: lesson.script,
+      script: captions,
       audioUrl,
-      duration: 60,
+      duration: audioDuration > 0 ? audioDuration : 60,
     });
 
     return res.status(202).json({
