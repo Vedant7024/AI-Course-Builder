@@ -1,7 +1,6 @@
-
+const mongoose = require("mongoose");
 const Course = require("../models/Course");
 const { generateCourse } = require("../services/groqService");
-const { searchResearch } = require("../services/researchService");
 
 const createCourse = async (req, res) => {
   try {
@@ -56,10 +55,9 @@ async function getMyCourses(req, res, next) {
   }
 }
 
-
 async function getCourseById(req, res, next) {
   try {
-    if (!require("mongoose").isValidObjectId(req.params.id)) {
+    if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid course ID.",
@@ -89,13 +87,10 @@ async function getCourseById(req, res, next) {
 
 async function updateLessonProgress(req, res, next) {
   try {
-    const mongoose = require("mongoose");
-
     const { id, lessonId } = req.params;
     const { completed } = req.body;
 
-    if (!mongoose.isValidObjectId(id) ||
-        !mongoose.isValidObjectId(lessonId)) {
+    if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(lessonId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid course or lesson ID.",
@@ -109,6 +104,19 @@ async function updateLessonProgress(req, res, next) {
       });
     }
 
+    // FIX: course ko database se laana zaroori tha (ye line missing thi)
+    // Sirf logged-in user ka apna course hi milega
+    const course = await Course.findOne({
+      _id: id,
+      createdBy: req.user._id,
+    });
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found.",
+      });
+    }
 
     const lessonExists = course.lessons.some(
       (lesson) => lesson._id.toString() === lessonId
@@ -153,7 +161,6 @@ async function updateLessonProgress(req, res, next) {
 
 async function deleteCourse(req, res, next) {
   try {
-    const mongoose = require("mongoose");
     const { id } = req.params;
 
     if (!mongoose.isValidObjectId(id)) {
@@ -234,12 +241,11 @@ const saveLessonVideo = async (req, res) => {
   }
 };
 
-
-   module.exports = {
-     createCourse,
-     getMyCourses,
-     getCourseById,
-     updateLessonProgress,
-     deleteCourse,
-     saveLessonVideo,   // <-- yeh
-   };
+module.exports = {
+  createCourse,
+  getMyCourses,
+  getCourseById,
+  updateLessonProgress,
+  deleteCourse,
+  saveLessonVideo,
+};
