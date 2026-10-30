@@ -1,22 +1,16 @@
-import { useEffect, useState } from "react";
 import "./VideoList.css";
 
-export default function VideoList({ videos = [], lessonId }) {
-  // Abhi kaunsa video chal raha hai (null = koi nahi)
-  const [activeId, setActiveId] = useState(null);
+export default function VideoList({ videos, activeId, onSelect }) {
+  // null/undefined aaye to bhi crash na ho
+  const list = Array.isArray(videos) ? videos : [];
 
-  // Lesson badalne par chalta hua video band ho jaye
-  useEffect(() => {
-    setActiveId(null);
-  }, [lessonId]);
-
-  if (!videos.length) {
-    return <p className="video-empty">No videos found for this lesson.</p>;
+  if (list.length === 0) {
+    return null;
   }
 
   return (
     <div className="video-grid">
-      {videos.map((v) => {
+      {list.map((v) => {
         const thumb =
           v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
 
@@ -26,7 +20,7 @@ export default function VideoList({ videos = [], lessonId }) {
               {activeId === v.videoId ? (
                 <iframe
                   src={`https://www.youtube-nocookie.com/embed/${v.videoId}?autoplay=1&rel=0`}
-                  title={v.title}
+                  title={v.title || "YouTube video"}
                   allow="autoplay; encrypted-media; picture-in-picture"
                   allowFullScreen
                 />
@@ -34,15 +28,20 @@ export default function VideoList({ videos = [], lessonId }) {
                 <button
                   type="button"
                   className="video-thumb"
-                  onClick={() => setActiveId(v.videoId)}
-                  aria-label={`Play ${v.title}`}
+                  onClick={() => onSelect(v.videoId)}
+                  aria-label={`Play ${v.title || "video"}`}
                 >
-                  <img src={thumb} alt={v.title} />
+                  <img src={thumb} alt={v.title || "Video thumbnail"} />
                   <span className="play-icon">▶</span>
                 </button>
               )}
             </div>
-            <p className="video-title">{v.title}</p>
+
+            <h3 className="video-title">{v.title}</h3>
+
+            {v.description && (
+              <p className="video-description">{v.description}</p>
+            )}
           </div>
         );
       })}

@@ -1,5 +1,4 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import VideoList from "../components/VideoList";
 import {
@@ -43,12 +42,16 @@ export default function CourseDetail() {
   const [videosLoading, setVideosLoading] = useState(false);
   const [videosError, setVideosError] = useState("");
 
+  // Abhi kaunsa YouTube video chal raha hai (null = koi nahi)
+  const [activeVideoId, setActiveVideoId] = useState(null);
+
   // AI-generated video states
   const [generatingVideo, setGeneratingVideo] = useState(false);
   const [renderId, setRenderId] = useState("");
   const [videoStatus, setVideoStatus] = useState("");
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState("");
   const [generatedVideoError, setGeneratedVideoError] = useState("");
+  const generatedVideoRef = useRef(null);
 
   // Load course details
   useEffect(() => {
@@ -94,6 +97,7 @@ export default function CourseDetail() {
       setVideosLoading(true);
       setVideosError("");
       setVideos([]);
+      setActiveVideoId(null); // lesson badalne par chalta video band
 
       try {
         const currentLesson = course.lessons[selectedIndex];
@@ -166,6 +170,12 @@ export default function CourseDetail() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // YouTube video play karte hi AI video pause ho jaye
+  function handlePlayYouTube(videoId) {
+    generatedVideoRef.current?.pause();
+    setActiveVideoId(videoId);
   }
 
   // Start AI lesson video generation
@@ -297,6 +307,14 @@ export default function CourseDetail() {
     totalLessons > 0
       ? Math.round((completedCount / totalLessons) * 100)
       : 0;
+
+  // Har video ke liye videoId nikalo, jinka id nahi mila unhe hata do
+  const playableVideos = videos
+    .map((video) => ({
+      ...video,
+      videoId: getYouTubeVideoId(video.url) || video.videoId,
+    }))
+    .filter((video) => video.videoId);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-8">
@@ -514,10 +532,12 @@ export default function CourseDetail() {
 
                     <video
                       key={generatedVideoUrl}
+                      ref={generatedVideoRef}
                       controls
                       playsInline
                       className="w-full rounded-lg bg-black"
                       src={generatedVideoUrl}
+                      onPlay={() => setActiveVideoId(null)}
                     >
                       Your browser does not support video playback.
                     </video>
@@ -545,42 +565,17 @@ export default function CourseDetail() {
 
                 {!videosLoading &&
                   !videosError &&
-                  videos.length === 0 && (
+                  playableVideos.length === 0 && (
                     <p className="text-slate-400">
                       No videos found for this lesson.
                     </p>
                   )}
 
-                <div className="space-y-6">
-                  {videos.map((video) => {
-                    const videoId = getYouTubeVideoId(video.url);
-
-                    if (!videoId) {
-                      return null;
-                    }
-
-                    return (
-                      <div
-                        key={videoId}
-                        className="rounded-xl border border-slate-800 p-4"
-                      >
-                        <h3 className="mb-3 font-semibold">
-                          {video.title}
-                        </h3>
-
-                        <div className="aspect-video w-full overflow-hidden rounded-lg">
-                         <VideoList videos={videos} lessonId={currentLessonId} />
-                        </div>
-
-                        {video.description && (
-                          <p className="mt-3 text-sm text-slate-500">
-                            {video.description}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                <VideoList
+                  videos={playableVideos}
+                  activeId={activeVideoId}
+                  onSelect={handlePlayYouTube}
+                />
               </section>
 
               {/* Lesson completion */}
