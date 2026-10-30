@@ -57,6 +57,16 @@ async function register(req, res, next) {
 
 // Login an existing user
 function login(req, res, next) {
+  if (typeof req.body.email !== "string") {
+    return res.status(400).json({
+      success: false,
+      message: "Valid email is required.",
+    });
+  }
+
+  // Normalize email in the same way as registration
+  req.body.email = req.body.email.trim().toLowerCase();
+
   passport.authenticate("local", (error, user) => {
     if (error) return next(error);
 
@@ -84,7 +94,6 @@ function login(req, res, next) {
 }
 
 // Logout
-
 function logout(req, res, next) {
   req.logout((error) => {
     if (error) return next(error);
@@ -107,8 +116,7 @@ function logout(req, res, next) {
   });
 }
 
-
-// Get the current logged-in user
+// Get current logged-in user
 function me(req, res) {
   if (!req.isAuthenticated()) {
     return res.status(401).json({
@@ -117,7 +125,7 @@ function me(req, res) {
     });
   }
 
-  res.json({
+  return res.json({
     success: true,
     user: {
       id: req.user._id,
