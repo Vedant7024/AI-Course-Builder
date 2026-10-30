@@ -1,5 +1,5 @@
-
 const Shotstack = require("shotstack-sdk");
+const { cleanScriptForSpeech } = require("./ttsService");
 
 function createShotstackClient() {
   const apiKey = process.env.SHOTSTACK_API_KEY;
@@ -133,6 +133,12 @@ function createTextAsset(text, isOpening = false) {
     .setPosition("center");
 }
 
+// Video ke end me itna extra time, taaki narration kabhi beech me na kate
+const END_PADDING_SECONDS = 1.5;
+
+// "duration" = narration audio ki asli length (seconds).
+// Poori timeline isi ke hisaab se banti hai, aur slides ka time
+// text ki length ke hisaab se baanta jaata hai (jitna zyada text, utna zyada time).
 async function generateLessonVideo({
   title,
   script,
@@ -149,58 +155,47 @@ async function generateLessonVideo({
 
   const { editApi } = createShotstackClient();
 
-  // Include all script content instead of limiting it to five slides.
-  const slideTexts = splitTextIntoSlides(script, 100);
+  const audioDuration =
+    Number(duration) > 0 ? Number(duration) : 60;
 
-  const openingDuration = 4;
+  const totalDuration = audioDuration + END_PADDING_SECONDS;
 
-  // Estimate how long each slide needs to be readable.
-  const contentDurations = slideTexts.map((text) =>
-    Math.max(5, Math.ceil(text.length / 15))
+  // Slides wahi text dikhayen jo narration me bola jata hai
+  // (markdown symbols hata kar)
+  const slideTexts = splitTextIntoSlides(
+    cleanScriptForSpeech(script),
+    100
   );
 
-  const estimatedDuration =
-    openingDuration +
-    contentDurations.reduce((total, value) => total + value, 0);
+  const openingText = title || "AI Learning Lesson";
 
-  // Keep the timeline long enough for the complete slide sequence.
-  const finalDuration = Math.max(duration, estimatedDuration);
+  // Pehla item = title slide, baaki = lesson slides
+  const allTexts = [openingText, ...slideTexts];
 
-  const baseContentDuration = contentDurations.reduce(
+  // Title ke baad pause hota hai, isliye uska thoda extra weight
+  const weights = allTexts.map((text, index) =>
+    Math.max(text.length, 1) + (index === 0 ? 12 : 0)
+  );
+
+  const totalWeight = weights.reduce(
     (total, value) => total + value,
     0
   );
 
-  const extraTime = finalDuration - estimatedDuration;
-
   const clips = [];
+  let currentStart = 0;
 
-  // Opening title slide.
-  clips.push(
-    new Shotstack.Clip()
-      .setAsset(
-        createTextAsset(title || "AI Learning Lesson", true)
-      )
-      .setStart(0)
-      .setLength(openingDuration)
-  );
+  allTexts.forEach((text, index) => {
+    const isLast = index === allTexts.length - 1;
 
-  // Educational slides.
-  let currentStart = openingDuration;
-
-  slideTexts.forEach((text, index) => {
-    const baseDuration = contentDurations[index];
-
-    const extraShare =
-      baseContentDuration > 0
-        ? (baseDuration / baseContentDuration) * extraTime
-        : 0;
-
-    const slideDuration = baseDuration + extraShare;
+    // Last slide ko bacha hua poora time do, taaki timeline exact audio + padding tak chale
+    const slideDuration = isLast
+      ? Math.max(totalDuration - currentStart, 1)
+      : (weights[index] / totalWeight) * totalDuration;
 
     clips.push(
       new Shotstack.Clip()
-        .setAsset(createTextAsset(text))
+        .setAsset(createTextAsset(text, index === 0))
         .setStart(currentStart)
         .setLength(slideDuration)
     );

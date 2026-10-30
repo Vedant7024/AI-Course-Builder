@@ -19,6 +19,55 @@ function cleanScriptForSpeech(script) {
     .trim();
 }
 
+// WAV file ki asli length (seconds me) nikalta hai.
+// Isse video ki timeline audio ke barabar rakhi jaati hai, taaki aakhri awaaz na kate.
+function getAudioDurationSeconds(filePath) {
+  const buffer = fs.readFileSync(filePath);
+
+  // Gemini ka audio: 24kHz, mono, 16-bit PCM (header na mile to yehi maan lete hain)
+  let sampleRate = 24000;
+  let channels = 1;
+  let bitsPerSample = 16;
+  let dataBytes = null;
+
+  if (
+    buffer.length > 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WAVE"
+  ) {
+    let offset = 12;
+
+    while (offset + 8 <= buffer.length) {
+      const chunkId = buffer.toString("ascii", offset, offset + 4);
+      const chunkSize = buffer.readUInt32LE(offset + 4);
+      const bodyStart = offset + 8;
+
+      if (chunkId === "fmt " && bodyStart + 16 <= buffer.length) {
+        channels = buffer.readUInt16LE(bodyStart + 2) || 1;
+        sampleRate = buffer.readUInt32LE(bodyStart + 4) || 24000;
+        bitsPerSample = buffer.readUInt16LE(bodyStart + 14) || 16;
+      }
+
+      if (chunkId === "data") {
+        const remaining = buffer.length - bodyStart;
+        dataBytes =
+          chunkSize > 0 && chunkSize <= remaining ? chunkSize : remaining;
+        break;
+      }
+
+      offset = bodyStart + chunkSize + (chunkSize % 2);
+    }
+  }
+
+  if (dataBytes === null) {
+    dataBytes = buffer.length;
+  }
+
+  const bytesPerSecond = sampleRate * channels * (bitsPerSample / 8);
+
+  return bytesPerSecond > 0 ? dataBytes / bytesPerSecond : 0;
+}
+
 async function generateLessonAudio(script, lessonTitle = "Lesson") {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -108,4 +157,8 @@ async function generateLessonAudio(script, lessonTitle = "Lesson") {
   return outputPath;
 }
 
-module.exports = { generateLessonAudio };
+module.exports = {
+  generateLessonAudio,
+  getAudioDurationSeconds,
+  cleanScriptForSpeech,
+};
