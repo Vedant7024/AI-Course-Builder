@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import VideoList from "../components/VideoList";
 import {
   ArrowLeft,
   BookOpen,
@@ -568,14 +569,7 @@ export default function CourseDetail() {
                         </h3>
 
                         <div className="aspect-video w-full overflow-hidden rounded-lg">
-                          <iframe
-                            className="h-full w-full"
-                            src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                            title={video.title}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            referrerPolicy="strict-origin-when-cross-origin"
-                            allowFullScreen
-                          />
+                         <VideoList videos={videos} lessonId={currentLessonId} />
                         </div>
 
                         {video.description && (
