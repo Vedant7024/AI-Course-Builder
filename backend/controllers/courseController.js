@@ -184,6 +184,56 @@ async function deleteCourse(req, res, next) {
   }
 }
 
+const saveLessonVideo = async (req, res) => {
+  try {
+    const courseId = req.params.id || req.params.courseId;
+    const { lessonId } = req.params;
+    const { videoUrl } = req.body;
+
+    // Sirf valid https URL accept karo
+    if (typeof videoUrl !== "string" || !/^https:\/\//i.test(videoUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid https video URL is required.",
+      });
+    }
+
+    // Sirf apne hi course me save ho sakta hai
+    const course = await Course.findOne({
+      _id: courseId,
+      createdBy: req.user._id,
+    });
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found.",
+      });
+    }
+
+    // Course ke andar se sahi lesson dhundo
+    const lesson = course.lessons.id(lessonId);
+
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        message: "Lesson not found.",
+      });
+    }
+
+    lesson.videoUrl = videoUrl;
+    await course.save();
+
+    return res.json({ success: true, lessonId, videoUrl });
+  } catch (error) {
+    console.error("saveLessonVideo error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Could not save lesson video.",
+    });
+  }
+};
+
 
    module.exports = {
      createCourse,
