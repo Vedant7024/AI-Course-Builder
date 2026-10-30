@@ -1,4 +1,3 @@
-
 const mongoose = require("mongoose");
 
 const lessonSchema = new mongoose.Schema(
@@ -18,6 +17,11 @@ const lessonSchema = new mongoose.Schema(
     script: {
       type: String,
       required: true,
+    },
+    // AI generated video ka saved URL (is lesson ke liye)
+    videoUrl: {
+      type: String,
+      default: "",
     },
   },
   { _id: true }
@@ -52,13 +56,13 @@ const courseSchema = new mongoose.Schema(
       required: true,
     },
     completedLessons: {
-  type: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+        },
+      ],
+      default: [],
     },
-  ],
-  default: [],
-},
   },
   { timestamps: true }
 );

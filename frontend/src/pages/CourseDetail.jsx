@@ -45,13 +45,24 @@ export default function CourseDetail() {
   // Abhi kaunsa YouTube video chal raha hai (null = koi nahi)
   const [activeVideoId, setActiveVideoId] = useState(null);
 
-  // AI-generated video states
-  const [generatingVideo, setGeneratingVideo] = useState(false);
-  const [renderId, setRenderId] = useState("");
-  const [videoStatus, setVideoStatus] = useState("");
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState("");
-  const [generatedVideoError, setGeneratedVideoError] = useState("");
+  // AI-generated video: har lesson ka apna alag state
+  // { [lessonId]: { starting, renderId, status, url, error } }
+  const [lessonVideos, setLessonVideos] = useState({});
+  const lessonVideosRef = useRef({});
+  lessonVideosRef.current = lessonVideos;
+  const pollingRef = useRef(false);
   const generatedVideoRef = useRef(null);
+
+  const courseId = course?._id;
+  const currentLessonId = course?.lessons?.[selectedIndex]?._id;
+
+  // Kisi ek lesson ke video state me badlav karo
+  function updateLessonVideo(lessonId, patch) {
+    setLessonVideos((previous) => ({
+      ...previous,
+      [lessonId]: { ...(previous[lessonId] || {}), ...patch },
+    }));
+  }
 
   // Load course details
   useEffect(() => {
@@ -63,6 +74,8 @@ export default function CourseDetail() {
 
         if (active) {
           setCourse(response.data.course);
+          setLessonVideos({});
+          setSelectedIndex(0);
         }
       } catch (err) {
         if (active) {
@@ -87,7 +100,7 @@ export default function CourseDetail() {
 
   // Load YouTube videos for the selected lesson
   useEffect(() => {
-    if (!course || !course.lessons[selectedIndex]) {
+    if (!courseId || !currentLessonId) {
       return;
     }
 
@@ -100,13 +113,11 @@ export default function CourseDetail() {
       setActiveVideoId(null); // lesson badalne par chalta video band
 
       try {
-        const currentLesson = course.lessons[selectedIndex];
-
         const response = await api.get(
-          `/courses/${course._id}/videos`,
+          `/courses/${courseId}/videos`,
           {
             params: {
-              lessonId: currentLesson._id,
+              lessonId: currentLessonId,
             },
           }
         );
@@ -133,7 +144,117 @@ export default function CourseDetail() {
     return () => {
       active = false;
     };
-  }, [course, selectedIndex]);
+  }, [courseId, currentLessonId]);
+
+  // Koi bhi lesson ka video render ho raha hai?
+  const hasPending = Object.values(lessonVideos).some(
+    (item) => item.renderId && !item.url && !item.error
+  );
+
+  // Saare pending lesson videos ka status ek saath check karo
+  useEffect(() => {
+    if (!hasPending || !courseId) {
+      return;
+    }
+
+    let stopped = false;
+
+    // Video ready hone par database me save karo (refresh ke baad bhi rahe)
+    async function saveVideo(lessonId, videoUrl) {
+      try {
+        await api.patch(
+          `/courses/${courseId}/lessons/${lessonId}/video`,
+          { videoUrl }
+        );
+
+        setCourse((previous) =>
+          previous
+            ? {
+                ...previous,
+                lessons: previous.lessons.map((item) =>
+                  String(item._id) === String(lessonId)
+                    ? { ...item, videoUrl }
+                    : item
+                ),
+              }
+            : previous
+        );
+      } catch (err) {
+        console.error("Could not save lesson video:", err);
+      }
+    }
+
+    async function poll() {
+      if (pollingRef.current) {
+        return;
+      }
+
+      pollingRef.current = true;
+
+      const pending = Object.entries(lessonVideosRef.current).filter(
+        ([, item]) => item.renderId && !item.url && !item.error
+      );
+
+      await Promise.all(
+        pending.map(async ([lessonId, item]) => {
+          try {
+            const response = await api.get(
+              `/courses/${courseId}/videos/status/${item.renderId}`
+            );
+
+            if (stopped) {
+              return;
+            }
+
+            const status = response.data.status;
+
+            if (status === "done") {
+              const url = response.data.videoUrl || "";
+
+              if (url) {
+                updateLessonVideo(lessonId, { status, url });
+                saveVideo(lessonId, url);
+              } else {
+                updateLessonVideo(lessonId, {
+                  status,
+                  error: "Video finished but no URL was returned.",
+                });
+              }
+            } else if (status === "failed") {
+              updateLessonVideo(lessonId, {
+                status,
+                error:
+                  response.data.error || "Video rendering failed.",
+              });
+            } else {
+              updateLessonVideo(lessonId, { status });
+            }
+          } catch (err) {
+            if (stopped) {
+              return;
+            }
+
+            updateLessonVideo(lessonId, {
+              error:
+                err.response?.data?.message ||
+                "Could not check video rendering status.",
+            });
+          }
+        })
+      );
+
+      pollingRef.current = false;
+    }
+
+    poll();
+    const intervalId = setInterval(poll, 4000);
+
+    return () => {
+      stopped = true;
+      clearInterval(intervalId);
+      pollingRef.current = false;
+    };
+  }, [hasPending, courseId]);
 
   // Check lesson completion
   function isCompleted(lessonId) {
@@ -146,15 +267,15 @@ export default function CourseDetail() {
 
   // Update lesson completion
   async function toggleLessonProgress() {
-    const lesson = course.lessons[selectedIndex];
-    const completed = !isCompleted(lesson._id);
+    const currentLesson = course.lessons[selectedIndex];
+    const completed = !isCompleted(currentLesson._id);
 
     setSaving(true);
     setProgressError("");
 
     try {
       const response = await api.patch(
-        `/courses/${course._id}/lessons/${lesson._id}/progress`,
+        `/courses/${course._id}/lessons/${currentLesson._id}/progress`,
         { completed }
       );
 
@@ -178,96 +299,43 @@ export default function CourseDetail() {
     setActiveVideoId(videoId);
   }
 
-  // Start AI lesson video generation
+  // Selected lesson ke liye AI video generate karo
   async function handleGenerateVideo() {
     if (!course || !course.lessons[selectedIndex]) {
       return;
     }
 
-    const currentLesson = course.lessons[selectedIndex];
+    const lessonId = course.lessons[selectedIndex]._id;
 
-    setGeneratingVideo(true);
-    setGeneratedVideoError("");
-    setGeneratedVideoUrl("");
-    setRenderId("");
-    setVideoStatus("starting");
+    updateLessonVideo(lessonId, {
+      starting: true,
+      status: "starting",
+      renderId: "",
+      url: "",
+      error: "",
+    });
 
     try {
       const response = await api.post(
         `/courses/${course._id}/generate-video`,
-        {
-          lessonId: currentLesson._id,
-        }
+        { lessonId }
       );
 
-      setRenderId(response.data.renderId);
-      setVideoStatus("queued");
+      updateLessonVideo(lessonId, {
+        starting: false,
+        renderId: response.data.renderId,
+        status: "queued",
+      });
     } catch (err) {
-      setVideoStatus("");
-      setGeneratedVideoError(
-        err.response?.data?.message ||
-          "Could not start video generation."
-      );
-    } finally {
-      setGeneratingVideo(false);
+      updateLessonVideo(lessonId, {
+        starting: false,
+        status: "",
+        error:
+          err.response?.data?.message ||
+          "Could not start video generation.",
+      });
     }
   }
-
-  // Poll Shotstack until the video is ready
-  useEffect(() => {
-    if (!renderId || !course?._id) {
-      return;
-    }
-
-    let active = true;
-    let timeoutId;
-
-    async function checkVideoStatus() {
-      try {
-        const response = await api.get(
-          `/courses/${course._id}/videos/status/${renderId}`
-        );
-
-        if (!active) {
-          return;
-        }
-
-        const status = response.data.status;
-        setVideoStatus(status);
-
-        if (status === "done") {
-          setGeneratedVideoUrl(response.data.videoUrl || "");
-          return;
-        }
-
-        if (status === "failed") {
-          setGeneratedVideoError(
-            response.data.error ||
-              "Video rendering failed."
-          );
-          return;
-        }
-
-        timeoutId = setTimeout(checkVideoStatus, 4000);
-      } catch (err) {
-        if (!active) {
-          return;
-        }
-
-        setGeneratedVideoError(
-          err.response?.data?.message ||
-            "Could not check video rendering status."
-        );
-      }
-    }
-
-    checkVideoStatus();
-
-    return () => {
-      active = false;
-      clearTimeout(timeoutId);
-    };
-  }, [renderId, course?._id]);
 
   // Loading screen
   if (loading) {
@@ -315,6 +383,20 @@ export default function CourseDetail() {
       videoId: getYouTubeVideoId(video.url) || video.videoId,
     }))
     .filter((video) => video.videoId);
+
+  // Selected lesson ke AI video ki halat
+  const lessonVideo = lesson ? lessonVideos[lesson._id] || {} : {};
+
+  const isBusy =
+    Boolean(lessonVideo.starting) ||
+    Boolean(
+      lessonVideo.renderId && !lessonVideo.url && !lessonVideo.error
+    );
+
+  // Naya URL ho to wo, nahi to database me saved URL
+  const lessonVideoUrl = isBusy
+    ? ""
+    : lessonVideo.url || lesson?.videoUrl || "";
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-8">
@@ -381,6 +463,9 @@ export default function CourseDetail() {
             <div className="space-y-3">
               {course.lessons.map((item, index) => {
                 const done = isCompleted(item._id);
+                const hasAiVideo = Boolean(
+                  lessonVideos[item._id]?.url || item.videoUrl
+                );
 
                 return (
                   <button
@@ -398,12 +483,21 @@ export default function CourseDetail() {
                         LESSON {index + 1}
                       </span>
 
-                      {done && (
-                        <CheckCircle2
-                          size={18}
-                          className="text-green-400"
-                        />
-                      )}
+                      <span className="flex items-center gap-2">
+                        {hasAiVideo && (
+                          <Video
+                            size={16}
+                            className="text-violet-400"
+                          />
+                        )}
+
+                        {done && (
+                          <CheckCircle2
+                            size={18}
+                            className="text-green-400"
+                          />
+                        )}
+                      </span>
                     </span>
 
                     <span className="mt-2 block font-medium">
@@ -465,7 +559,7 @@ export default function CourseDetail() {
                 </p>
               </div>
 
-              {/* AI-generated lesson video */}
+              {/* AI-generated lesson video (har lesson ka alag) */}
               <section className="mt-8 rounded-xl border border-violet-500/30 bg-slate-950 p-5">
                 <div className="flex items-center gap-3">
                   <Video size={24} className="text-violet-400" />
@@ -480,43 +574,46 @@ export default function CourseDetail() {
                   <span className="font-medium text-white">
                     {lesson.title}
                   </span>
-                  . The video will appear here when rendering is complete.
+                  . The video is saved for this lesson and will
+                  appear here when rendering is complete.
                 </p>
 
                 <button
                   type="button"
                   onClick={handleGenerateVideo}
-                  disabled={generatingVideo || Boolean(renderId)}
+                  disabled={isBusy}
                   className="mt-4 rounded-lg bg-violet-600 px-5 py-3 font-medium transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {generatingVideo
+                  {lessonVideo.starting
                     ? "Starting generation..."
-                    : renderId
-                    ? "Video generation started"
+                    : isBusy
+                    ? "Rendering video..."
+                    : lessonVideoUrl
+                    ? "Regenerate video"
                     : "Generate AI Lesson Video"}
                 </button>
 
-                {videoStatus &&
-                  !generatedVideoUrl &&
-                  !generatedVideoError && (
-                    <p className="mt-4 text-sm text-violet-300">
-                      Video status: {videoStatus}. Please wait...
-                    </p>
-                  )}
+                {isBusy && (
+                  <p className="mt-4 text-sm text-violet-300">
+                    Video status: {lessonVideo.status || "queued"}.
+                    Please wait...
+                  </p>
+                )}
 
-                {generatedVideoError && (
+                {lessonVideo.error && (
                   <div className="mt-4">
                     <p className="text-sm text-red-400">
-                      {generatedVideoError}
+                      {lessonVideo.error}
                     </p>
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setRenderId("");
-                        setVideoStatus("");
-                        setGeneratedVideoError("");
-                      }}
+                      onClick={() =>
+                        setLessonVideos((previous) => ({
+                          ...previous,
+                          [lesson._id]: {},
+                        }))
+                      }
                       className="mt-3 rounded-lg border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
                     >
                       Try again
@@ -524,19 +621,19 @@ export default function CourseDetail() {
                   </div>
                 )}
 
-                {generatedVideoUrl && (
+                {lessonVideoUrl && (
                   <div className="mt-5">
                     <h3 className="mb-3 font-semibold text-green-400">
                       Your AI lesson video is ready!
                     </h3>
 
                     <video
-                      key={generatedVideoUrl}
+                      key={lessonVideoUrl}
                       ref={generatedVideoRef}
                       controls
                       playsInline
                       className="w-full rounded-lg bg-black"
-                      src={generatedVideoUrl}
+                      src={lessonVideoUrl}
                       onPlay={() => setActiveVideoId(null)}
                     >
                       Your browser does not support video playback.

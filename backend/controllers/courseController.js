@@ -185,10 +185,11 @@ async function deleteCourse(req, res, next) {
 }
 
 
-module.exports = {
-  createCourse,
-  getMyCourses,
-  getCourseById,
-  updateLessonProgress,
-  deleteCourse,
-};
+   module.exports = {
+     createCourse,
+     getMyCourses,
+     getCourseById,
+     updateLessonProgress,
+     deleteCourse,
+     saveLessonVideo,   // <-- yeh
+   };
