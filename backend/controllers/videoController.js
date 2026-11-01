@@ -43,7 +43,11 @@ async function getYouTubeVideos(req, res, next) {
     }
 
     const videos = await searchYouTubeVideos(
-      `${course.topic} ${lesson.title}`
+      `${course.topic || course.title} ${lesson.title}`,
+      {
+        summary: lesson.summary || "",
+        script: lesson.script || "",
+      }
     );
 
     return res.json({

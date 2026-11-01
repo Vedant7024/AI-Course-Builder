@@ -1,13 +1,11 @@
-
 const axios = require("axios");
 
 const videoCache = new Map();
 const CACHE_DURATION = 6 * 60 * 60 * 1000;
 
-const getBaseUrl = () => {
-  return (process.env.SEARXNG_URL || "https://ai-course-builder-searxng.onrender.com")
-    .replace(/\/+$/, "");
-};
+const getBaseUrl = () =>
+  (process.env.SEARXNG_URL ||
+    "https://ai-course-builder-searxng.onrender.com").replace(/\/+$/, "");
 
 function extractVideoId(url = "") {
   try {
@@ -19,9 +17,9 @@ function extractVideoId(url = "") {
     }
 
     if (
-      hostname === "youtube.com" ||
-      hostname === "m.youtube.com" ||
-      hostname === "youtube-nocookie.com"
+      ["youtube.com", "m.youtube.com", "youtube-nocookie.com"].includes(
+        hostname
+      )
     ) {
       if (parsed.searchParams.has("v")) {
         return parsed.searchParams.get("v");
@@ -45,12 +43,9 @@ function pickYouTubeVideos(results = []) {
   const seen = new Set();
 
   for (const result of results) {
-    const url = result.url || "";
-    const iframeSrc = result.iframe_src || "";
-
     const videoId =
-      extractVideoId(url) ||
-      extractVideoId(iframeSrc);
+      extractVideoId(result.url || "") ||
+      extractVideoId(result.iframe_src || "");
 
     if (!videoId || seen.has(videoId)) continue;
 
@@ -68,14 +63,13 @@ function pickYouTubeVideos(results = []) {
   return videos;
 }
 
-async function searxSearch(query) {
-  const baseUrl = getBaseUrl();
-
-  const response = await axios.get(`${baseUrl}/search`, {
+async function searxSearch(query, videosOnly = false) {
+  const response = await axios.get(`${getBaseUrl()}/search`, {
     params: {
       q: query,
       format: "json",
       language: "en",
+      ...(videosOnly ? { categories: "videos" } : {}),
     },
     timeout: 25000,
     headers: {
@@ -89,12 +83,14 @@ async function searxSearch(query) {
     : [];
 }
 
-async function searchYouTubeVideos(query) {
-  const cleanQuery = String(query || "").trim();
+async function searchYouTubeVideos(query, options = {}) {
+  const topic = String(query || "").trim();
+  const summary = String(options.summary || "").trim();
+  const script = String(options.script || "").trim();
 
-  if (!cleanQuery) return [];
+  if (!topic) return [];
 
-  const cacheKey = cleanQuery.toLowerCase();
+  const cacheKey = `${topic}|${summary}|${script.slice(0, 200)}`.toLowerCase();
   const cached = videoCache.get(cacheKey);
 
   if (cached && Date.now() - cached.at < CACHE_DURATION) {
@@ -102,39 +98,50 @@ async function searchYouTubeVideos(query) {
   }
 
   const searchQueries = [
-    `${cleanQuery} tutorial`,
-    `${cleanQuery} full course`,
-  ];
+    `${topic} tutorial`,
+    `${topic} explained`,
+    `${topic} full course`,
+    summary ? `${topic} ${summary.slice(0, 120)} tutorial` : "",
+    script ? `${topic} ${script.slice(0, 100)} explained` : "",
+  ].filter(Boolean);
 
   const collectedVideos = [];
   const seenIds = new Set();
 
   for (const searchQuery of searchQueries) {
-    try {
-      console.log("Searching SearXNG:", searchQuery);
+    // Try video-specific results first, then normal search results.
+    for (const videosOnly of [true, false]) {
+      try {
+        console.log(
+          `Searching SearXNG (${videosOnly ? "videos" : "general"}):`,
+          searchQuery
+        );
 
-      const results = await searxSearch(searchQuery);
-      const extractedVideos = pickYouTubeVideos(results);
+        const results = await searxSearch(searchQuery, videosOnly);
+        const extractedVideos = pickYouTubeVideos(results);
 
-      console.log("SearXNG results:", results.length);
-      console.log("YouTube videos extracted:", extractedVideos.length);
+        console.log("SearXNG results:", results.length);
+        console.log("YouTube videos extracted:", extractedVideos.length);
 
-      for (const video of extractedVideos) {
-        if (!seenIds.has(video.videoId)) {
+        for (const video of extractedVideos) {
+          if (seenIds.has(video.videoId)) continue;
+
           seenIds.add(video.videoId);
           collectedVideos.push(video);
+
+          if (collectedVideos.length >= 6) break;
         }
 
         if (collectedVideos.length >= 6) break;
+      } catch (error) {
+        console.error(
+          "SearXNG search failed:",
+          error.response?.status || error.message
+        );
       }
-
-      if (collectedVideos.length >= 6) break;
-    } catch (error) {
-      console.error(
-        "SearXNG search failed:",
-        error.response?.status || error.message
-      );
     }
+
+    if (collectedVideos.length >= 6) break;
   }
 
   const finalVideos = collectedVideos.slice(0, 6);
