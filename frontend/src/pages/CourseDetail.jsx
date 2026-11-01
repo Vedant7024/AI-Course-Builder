@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import VideoList from "../components/VideoList";
 import {
@@ -37,6 +37,20 @@ function getYouTubeVideoId(url) {
 
 export default function CourseDetail() {
   const { id } = useParams();
+
+  const previousLessonRef = useRef(null);
+
+useLayoutEffect(() => {
+  if (previousLessonRef.current !== selectedIndex) {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "instant",
+    });
+
+    previousLessonRef.current = selectedIndex;
+  }
+}, [selectedIndex]);
 
   const [course, setCourse] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
