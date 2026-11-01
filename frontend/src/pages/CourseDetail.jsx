@@ -1,5 +1,5 @@
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import VideoList from "../components/VideoList";
 import {
@@ -39,6 +39,8 @@ export default function CourseDetail() {
   const { id } = useParams();
 
   const previousLessonRef = useRef(null);
+
+const previousLessonRef = useRef(null);
 
 useLayoutEffect(() => {
   if (previousLessonRef.current !== selectedIndex) {
