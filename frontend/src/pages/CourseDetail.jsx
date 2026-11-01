@@ -38,21 +38,10 @@ function getYouTubeVideoId(url) {
 export default function CourseDetail() {
   const { id } = useParams();
 
-  const previousLessonRef = useRef(null);
-
-const previousLessonRef = useRef(null);
-
-useLayoutEffect(() => {
-  if (previousLessonRef.current !== selectedIndex) {
-    window.scrollTo({
-      top: 0,
-      left: 0,
-      behavior: "instant",
-    });
-
-    previousLessonRef.current = selectedIndex;
-  }
+  useEffect(() => {
+  window.scrollTo(0, 0);
 }, [selectedIndex]);
+  
 
   const [course, setCourse] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
