@@ -1,29 +1,30 @@
+
 const axios = require("axios");
 
 const videoCache = new Map();
 const CACHE_DURATION = 6 * 60 * 60 * 1000;
 
-const getBaseUrl = () =>
-  (process.env.SEARXNG_URL ||
-    "https://ai-course-builder-searxng.onrender.com").replace(/\/+$/, "");
+function getBaseUrl() {
+  return (
+    process.env.SEARXNG_URL ||
+    "https://ai-course-builder-searxng.onrender.com"
+  ).replace(/\/+$/, "");
+}
 
 function extractVideoId(url = "") {
   try {
     const parsed = new URL(url);
-    const hostname = parsed.hostname.replace(/^www\./, "");
+    const host = parsed.hostname.replace(/^www\./, "");
 
-    if (hostname === "youtu.be") {
+    if (host === "youtu.be") {
       return parsed.pathname.split("/").filter(Boolean)[0] || null;
     }
 
     if (
-      ["youtube.com", "m.youtube.com", "youtube-nocookie.com"].includes(
-        hostname
-      )
+      ["youtube.com", "m.youtube.com", "youtube-nocookie.com"].includes(host)
     ) {
-      if (parsed.searchParams.has("v")) {
-        return parsed.searchParams.get("v");
-      }
+      const id = parsed.searchParams.get("v");
+      if (id) return id;
 
       const match = parsed.pathname.match(
         /^\/(?:embed|shorts|live|v)\/([^/?]+)/
@@ -31,11 +32,11 @@ function extractVideoId(url = "") {
 
       return match ? match[1] : null;
     }
-
-    return null;
-  } catch {
+  } catch (error) {
     return null;
   }
+
+  return null;
 }
 
 function pickYouTubeVideos(results = []) {
@@ -43,9 +44,18 @@ function pickYouTubeVideos(results = []) {
   const seen = new Set();
 
   for (const result of results) {
-    const videoId =
-      extractVideoId(result.url || "") ||
-      extractVideoId(result.iframe_src || "");
+    const candidates = [
+      result.url,
+      result.iframe_src,
+      result.embed_url,
+    ].filter(Boolean);
+
+    let videoId = null;
+
+    for (const url of candidates) {
+      videoId = extractVideoId(url);
+      if (videoId) break;
+    }
 
     if (!videoId || seen.has(videoId)) continue;
 
@@ -63,13 +73,13 @@ function pickYouTubeVideos(results = []) {
   return videos;
 }
 
-async function searxSearch(query, videosOnly = false) {
+async function searxSearch(query) {
   const response = await axios.get(`${getBaseUrl()}/search`, {
     params: {
       q: query,
       format: "json",
       language: "en",
-      ...(videosOnly ? { categories: "videos" } : {}),
+      categories: "general",
     },
     timeout: 25000,
     headers: {
@@ -83,84 +93,70 @@ async function searxSearch(query, videosOnly = false) {
     : [];
 }
 
-async function searchYouTubeVideos(query, options = {}) {
-  const topic = String(query || "").trim();
-  const summary = String(options.summary || "").trim();
-  const script = String(options.script || "").trim();
+async function searchYouTubeVideos(query) {
+  const cleanQuery = String(query || "").trim();
+  if (!cleanQuery) return [];
 
-  if (!topic) return [];
-
-  const cacheKey = `${topic}|${summary}|${script.slice(0, 200)}`.toLowerCase();
+  const cacheKey = cleanQuery.toLowerCase();
   const cached = videoCache.get(cacheKey);
 
   if (cached && Date.now() - cached.at < CACHE_DURATION) {
     return cached.data;
   }
 
-  const searchQueries = [
-    `${topic} tutorial`,
-    `${topic} explained`,
-    `${topic} full course`,
-    summary ? `${topic} ${summary.slice(0, 120)} tutorial` : "",
-    script ? `${topic} ${script.slice(0, 100)} explained` : "",
-  ].filter(Boolean);
+  const queries = [
+    `site:youtube.com/watch ${cleanQuery} tutorial`,
+    `site:youtube.com/watch ${cleanQuery} full course`,
+    `site:youtube.com ${cleanQuery} tutorial`,
+  ];
 
-  const collectedVideos = [];
-  const seenIds = new Set();
+  const videos = [];
+  const seen = new Set();
 
-  for (const searchQuery of searchQueries) {
-    // Try video-specific results first, then normal search results.
-    for (const videosOnly of [true, false]) {
-      try {
-        console.log(
-          `Searching SearXNG (${videosOnly ? "videos" : "general"}):`,
-          searchQuery
-        );
+  for (const searchQuery of queries) {
+    try {
+      console.log("SearXNG query:", searchQuery);
 
-        const results = await searxSearch(searchQuery, videosOnly);
-        const extractedVideos = pickYouTubeVideos(results);
+      const results = await searxSearch(searchQuery);
+      const extracted = pickYouTubeVideos(results);
 
-        console.log("SearXNG results:", results.length);
-        console.log("YouTube videos extracted:", extractedVideos.length);
+      console.log("Search results:", results.length);
+      console.log("Videos extracted:", extracted.length);
 
-        for (const video of extractedVideos) {
-          if (seenIds.has(video.videoId)) continue;
-
-          seenIds.add(video.videoId);
-          collectedVideos.push(video);
-
-          if (collectedVideos.length >= 6) break;
+      for (const video of extracted) {
+        if (!seen.has(video.videoId)) {
+          seen.add(video.videoId);
+          videos.push(video);
         }
 
-        if (collectedVideos.length >= 6) break;
-      } catch (error) {
-        console.error(
-          "SearXNG search failed:",
-          error.response?.status || error.message
-        );
+        if (videos.length >= 6) break;
       }
-    }
 
-    if (collectedVideos.length >= 6) break;
+      if (videos.length >= 6) break;
+    } catch (error) {
+      console.error(
+        "YouTube search failed:",
+        error.response?.status || error.message
+      );
+    }
   }
 
-  const finalVideos = collectedVideos.slice(0, 6);
+  const finalVideos = videos.slice(0, 6);
 
-  if (finalVideos.length > 0) {
+  // Cache only successful searches.
+  if (finalVideos.length) {
     videoCache.set(cacheKey, {
       at: Date.now(),
       data: finalVideos,
     });
   }
 
-  console.log("Final YouTube videos:", finalVideos.length);
-
+  console.log("Final videos:", finalVideos.length);
   return finalVideos;
 }
 
 async function searchResearch(topic) {
   const cleanTopic = String(topic || "").trim();
-
   if (!cleanTopic) return [];
 
   try {
@@ -176,7 +172,6 @@ async function searchResearch(topic) {
       "Research search failed:",
       error.response?.status || error.message
     );
-
     return [];
   }
 }
