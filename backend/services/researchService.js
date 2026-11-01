@@ -6,7 +6,7 @@ function getBaseUrl() {
   const base = process.env.SEARXNG_URL;
 
   if (!base) {
-    throw new Error("SEARXNG_URL is missing in backend/.env");
+    throw new Error("SEARXNG_URL is missing");
   }
 
   return base.replace(/\/+$/, "");
@@ -19,7 +19,7 @@ async function searxSearch(params) {
   })}`;
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(25000),
     headers: { Accept: "application/json" },
   });
 
@@ -90,46 +90,6 @@ function pickYouTubeVideos(results) {
   return videos;
 }
 
-async function youtubeApiSearch(query) {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-
-  if (!apiKey) return [];
-
-  const url = `https://www.googleapis.com/youtube/v3/search?${new URLSearchParams({
-    part: "snippet",
-    type: "video",
-    maxResults: "10",
-    videoEmbeddable: "true",
-    q: `${query} tutorial`,
-    key: apiKey,
-  })}`;
-
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(15000),
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`YouTube API HTTP ${response.status}: ${message}`);
-  }
-
-  const data = await response.json();
-
-  return (data.items || [])
-    .filter((item) => item.id?.videoId)
-    .map((item) => {
-      const id = item.id.videoId;
-
-      return {
-        videoId: id,
-        title: item.snippet?.title || "YouTube tutorial",
-        url: `https://www.youtube.com/watch?v=${id}`,
-        thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
-        description: String(item.snippet?.description || "").slice(0, 300),
-      };
-    });
-}
-
 async function searchYouTubeVideos(query) {
   const cleanQuery = String(query || "").trim();
 
@@ -143,70 +103,48 @@ async function searchYouTubeVideos(query) {
   }
 
   const shortQuery = cleanQuery.split(/\s+/).slice(0, 8).join(" ");
-  const found = [];
-  const seen = new Set();
 
-  // Try YouTube API first when configured.
-  try {
-    const apiVideos = await youtubeApiSearch(shortQuery);
+  // One SearXNG request per search.
+  const attempts = [
+    {
+      q: `${shortQuery} tutorial`,
+      categories: "videos",
+      language: "en",
+    },
+    {
+      q: `site:youtube.com/watch ${shortQuery}`,
+      language: "en",
+    },
+  ];
 
-    for (const video of apiVideos) {
-      if (!seen.has(video.videoId)) {
-        seen.add(video.videoId);
-        found.push(video);
-      }
-    }
-  } catch (error) {
-    console.error("YouTube API search failed:", error.message);
-  }
+  let found = [];
+  let lastError = null;
 
-  // Use SearXNG as a fallback.
-  if (found.length < 3) {
-    const attempts = [
-      {
-        q: `${cleanQuery} tutorial`,
-        engines: "youtube",
-        categories: "videos",
-        language: "en",
-      },
-      {
-        q: shortQuery,
-        engines: "youtube",
-        categories: "videos",
-        language: "en",
-      },
-      {
-        q: `site:youtube.com/watch ${cleanQuery} tutorial`,
-        language: "en",
-      },
-    ];
+  for (const params of attempts) {
+    try {
+      console.log("SearXNG query:", params.q);
 
-    for (const params of attempts) {
-      try {
-        console.log("Searching videos:", params.q);
+      const results = await searxSearch(params);
+      console.log("SearXNG results:", results.length);
 
-        const results = await searxSearch(params);
-        const videos = pickYouTubeVideos(results);
+      found = pickYouTubeVideos(results);
+      console.log("Extracted YouTube videos:", found.length);
 
-        console.log("SearXNG results:", results.length);
-        console.log("Extracted videos:", videos.length);
+      if (found.length > 0) break;
+    } catch (error) {
+      lastError = error;
+      console.error("SearXNG search failed:", error.message);
 
-        for (const video of videos) {
-          if (!seen.has(video.videoId)) {
-            seen.add(video.videoId);
-            found.push(video);
-          }
-        }
-
-        if (found.length >= 6) break;
-      } catch (error) {
-        console.error("SearXNG search failed:", error.message);
+      // Do not hammer SearXNG after rate limiting or server errors.
+      if (/HTTP (429|502|503|504)/.test(error.message)) {
+        break;
       }
     }
   }
 
   const finalVideos = found.slice(0, 6);
 
+  // Cache only successful, non-empty results.
   if (finalVideos.length > 0) {
     videoCache.set(cacheKey, {
       at: Date.now(),
@@ -215,6 +153,10 @@ async function searchYouTubeVideos(query) {
   }
 
   console.log("Final YouTube videos:", finalVideos.length);
+
+  if (finalVideos.length === 0 && lastError) {
+    console.error("SearXNG could not return video results.");
+  }
 
   return finalVideos;
 }
