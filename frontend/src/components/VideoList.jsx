@@ -1,88 +1,70 @@
 
+import React from "react";
 import "./VideoList.css";
 
-export default function VideoList({
-  videos,
-  activeId,
-  onSelect,
-}) {
-  const list = Array.isArray(videos) ? videos : [];
+export default function VideoList({ videos = [] }) {
+  const getVideoId = (video) => {
+    if (video.videoId) return video.videoId;
 
-  if (list.length === 0) {
-    return null;
+    const url = video.url || "";
+
+    const match = url.match(
+      /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([^&?/]+)/
+    );
+
+    return match ? match[1] : null;
+  };
+
+  const validVideos = videos
+    .map((video) => ({
+      ...video,
+      videoId: getVideoId(video),
+    }))
+    .filter((video) => video.videoId);
+
+  if (!validVideos.length) {
+    return (
+      <div className="video-empty">
+        <h3>No videos found</h3>
+        <p>Try searching for this lesson again.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="video-grid">
-      {list.map((video) => {
-        const videoId = video.videoId;
+    <section className="video-list">
+      {validVideos.map((video, index) => (
+        <article className="video-card" key={video.videoId}>
+          <div className="video-frame">
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${video.videoId}`}
+              title={video.title || `Lesson video ${index + 1}`}
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </div>
 
-        if (!videoId) {
-          return null;
-        }
+          <div className="video-content">
+            <h3>
+              {video.title || `Lesson Video ${index + 1}`}
+            </h3>
 
-        const thumbnail =
-          video.thumbnail ||
-          `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+            {video.description && (
+              <p>{video.description}</p>
+            )}
 
-        const isActive = activeId === videoId;
-
-        return (
-          <article key={videoId} className="video-card">
-            <div className="video-frame">
-              {isActive ? (
-                <iframe
-                  src={`https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0`}
-                  title={video.title || "YouTube video"}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="video-thumb"
-                  onClick={() => onSelect(videoId)}
-                  aria-label={`Play ${video.title || "video"}`}
-                >
-                  <img
-                    src={thumbnail}
-                    alt={video.title || "Video thumbnail"}
-                    loading="lazy"
-                    onError={(event) => {
-                      event.currentTarget.onerror = null;
-                      event.currentTarget.src =
-                        `https://img.youtube.com/vi/${videoId}/default.jpg`;
-                    }}
-                  />
-
-                  <span className="play-icon" aria-hidden="true">
-                    ▶
-                  </span>
-                </button>
-              )}
-            </div>
-
-            <div className="video-card-content">
-              <span className="video-card-label">
-                <span className="video-label-dot" />
-                VIDEO LESSON
-              </span>
-
-              <h3 className="video-title">
-                {video.title || "YouTube video"}
-              </h3>
-
-              {video.description && (
-                <p className="video-description">
-                  {video.description}
-                </p>
-              )}
-            </div>
-          </article>
-        );
-      })}
-    </div>
+            <a
+              href={`https://www.youtube.com/watch?v=${video.videoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Watch on YouTube ↗
+            </a>
+          </div>
+        </article>
+      ))}
+    </section>
   );
 }
