@@ -6,7 +6,6 @@ export default function VideoList({
   activeId,
   onSelect,
 }) {
-  // Prevent errors if videos is undefined or null
   const list = Array.isArray(videos) ? videos : [];
 
   if (list.length === 0) {
@@ -29,7 +28,7 @@ export default function VideoList({
         const isActive = activeId === videoId;
 
         return (
-          <div key={videoId} className="video-card">
+          <article key={videoId} className="video-card">
             <div className="video-frame">
               {isActive ? (
                 <iframe
@@ -52,28 +51,36 @@ export default function VideoList({
                     alt={video.title || "Video thumbnail"}
                     loading="lazy"
                     onError={(event) => {
+                      event.currentTarget.onerror = null;
                       event.currentTarget.src =
                         `https://img.youtube.com/vi/${videoId}/default.jpg`;
                     }}
                   />
 
-                  <span className="play-icon">
+                  <span className="play-icon" aria-hidden="true">
                     ▶
                   </span>
                 </button>
               )}
             </div>
 
-            <h3 className="video-title">
-              {video.title || "YouTube video"}
-            </h3>
+            <div className="video-card-content">
+              <span className="video-card-label">
+                <span className="video-label-dot" />
+                VIDEO LESSON
+              </span>
 
-            {video.description && (
-              <p className="video-description">
-                {video.description}
-              </p>
-            )}
-          </div>
+              <h3 className="video-title">
+                {video.title || "YouTube video"}
+              </h3>
+
+              {video.description && (
+                <p className="video-description">
+                  {video.description}
+                </p>
+              )}
+            </div>
+          </article>
         );
       })}
     </div>
