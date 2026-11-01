@@ -37,12 +37,6 @@ function getYouTubeVideoId(url) {
 
 export default function CourseDetail() {
   const { id } = useParams();
-
-  useEffect(() => {
-  window.scrollTo(0, 0);
-}, [selectedIndex]);
-  
-
   const [course, setCourse] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
