@@ -1,5 +1,9 @@
-
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Link, useParams } from "react-router-dom";
 import VideoList from "../components/VideoList";
 import {
@@ -52,9 +56,26 @@ export default function CourseDetail() {
 
   const [lessonVideos, setLessonVideos] = useState({});
   const lessonVideosRef = useRef({});
-  lessonVideosRef.current = lessonVideos;
   const pollingRef = useRef(false);
   const generatedVideoRef = useRef(null);
+
+  // Scroll target for the lesson section
+  const lessonContentRef = useRef(null);
+
+  lessonVideosRef.current = lessonVideos;
+
+  // Scroll to the top whenever the selected lesson changes.
+  useLayoutEffect(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "instant",
+    });
+
+    if (lessonContentRef.current) {
+      lessonContentRef.current.scrollTop = 0;
+    }
+  }, [selectedIndex]);
 
   const courseId = course?._id;
   const currentLessonId = course?.lessons?.[selectedIndex]?._id;
@@ -62,7 +83,10 @@ export default function CourseDetail() {
   function updateLessonVideo(lessonId, patch) {
     setLessonVideos((previous) => ({
       ...previous,
-      [lessonId]: { ...(previous[lessonId] || {}), ...patch },
+      [lessonId]: {
+        ...(previous[lessonId] || {}),
+        ...patch,
+      },
     }));
   }
 
@@ -112,7 +136,9 @@ export default function CourseDetail() {
           params: { lessonId: currentLessonId },
         });
 
-        if (active) setVideos(response.data.videos || []);
+        if (active) {
+          setVideos(response.data.videos || []);
+        }
       } catch (err) {
         if (active) {
           setVideosError(
@@ -313,7 +339,9 @@ export default function CourseDetail() {
             <div className="h-80 rounded-[28px] bg-white" />
             <div className="h-96 rounded-[28px] bg-white" />
           </div>
-          <p className="text-sm text-[#82756F]">Preparing your learning space...</p>
+          <p className="text-sm text-[#82756F]">
+            Preparing your learning space...
+          </p>
         </div>
       </main>
     );
@@ -365,9 +393,7 @@ export default function CourseDetail() {
 
   const isBusy =
     Boolean(lessonVideo.starting) ||
-    Boolean(
-      lessonVideo.renderId && !lessonVideo.url && !lessonVideo.error
-    );
+    Boolean(lessonVideo.renderId && !lessonVideo.url && !lessonVideo.error);
 
   const lessonVideoUrl = isBusy
     ? ""
@@ -380,7 +406,10 @@ export default function CourseDetail() {
           to="/dashboard"
           className="group inline-flex items-center gap-2 rounded-full border border-[#F0E4D8] bg-white px-4 py-2.5 text-sm font-semibold text-[#82756F] shadow-sm transition hover:border-[#FF786B] hover:text-[#352D2A]"
         >
-          <ArrowLeft size={17} className="transition group-hover:-translate-x-1" />
+          <ArrowLeft
+            size={17}
+            className="transition group-hover:-translate-x-1"
+          />
           Back to dashboard
         </Link>
 
@@ -413,8 +442,15 @@ export default function CourseDetail() {
 
               <div className="hidden h-32 w-32 items-center justify-center rounded-[32px] bg-[#F2EAFB] md:flex">
                 <div className="relative">
-                  <BookOpen size={58} strokeWidth={1.5} className="text-[#9275CB]" />
-                  <Sparkles size={25} className="absolute -right-5 -top-4 text-[#FFAA66]" />
+                  <BookOpen
+                    size={58}
+                    strokeWidth={1.5}
+                    className="text-[#9275CB]"
+                  />
+                  <Sparkles
+                    size={25}
+                    className="absolute -right-5 -top-4 text-[#FFAA66]"
+                  />
                 </div>
               </div>
             </div>
@@ -449,7 +485,10 @@ export default function CourseDetail() {
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[#82756F]">
                 <span className="inline-flex items-center gap-2">
                   <CheckCircle2 size={17} className="text-[#65A77A]" />
-                  <strong className="text-[#352D2A]">{completedCount}</strong> of {totalLessons} completed
+                  <strong className="text-[#352D2A]">
+                    {completedCount}
+                  </strong>{" "}
+                  of {totalLessons} completed
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <Clock3 size={17} className="text-[#B8A0E8]" />
@@ -468,7 +507,9 @@ export default function CourseDetail() {
                 <p className="text-xs font-extrabold uppercase tracking-widest text-[#FF786B]">
                   Your roadmap
                 </p>
-                <h2 className="mt-1 text-xl font-extrabold">Course lessons</h2>
+                <h2 className="mt-1 text-xl font-extrabold">
+                  Course lessons
+                </h2>
               </div>
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFE6A7]">
                 <BookOpen size={21} className="text-[#795B36]" />
@@ -515,7 +556,10 @@ export default function CourseDetail() {
                           <Video size={16} className="text-[#9275CB]" />
                         )}
                         {done && (
-                          <CheckCircle2 size={18} className="text-[#65A77A]" />
+                          <CheckCircle2
+                            size={18}
+                            className="text-[#65A77A]"
+                          />
                         )}
                       </span>
                     </span>
@@ -535,7 +579,10 @@ export default function CourseDetail() {
             </div>
 
             <div className="mt-5 flex items-start gap-3 rounded-2xl bg-[#EAF5EC] p-4">
-              <Sparkles size={19} className="mt-0.5 shrink-0 text-[#548B66]" />
+              <Sparkles
+                size={19}
+                className="mt-0.5 shrink-0 text-[#548B66]"
+              />
               <p className="text-xs leading-5 text-[#52715B]">
                 Small steps every day lead to big achievements. Keep learning!
               </p>
@@ -544,7 +591,10 @@ export default function CourseDetail() {
 
           {/* Selected lesson */}
           {lesson && (
-            <section className="min-w-0 rounded-[28px] border border-[#F0E4D8] bg-white p-5 shadow-[0_8px_28px_rgba(86,61,43,0.05)] sm:p-8">
+            <section
+              ref={lessonContentRef}
+              className="min-w-0 rounded-[28px] border border-[#F0E4D8] bg-white p-5 shadow-[0_8px_28px_rgba(86,61,43,0.05)] sm:p-8"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2 rounded-full bg-[#F2EAFB] px-3.5 py-2 text-xs font-extrabold uppercase tracking-wider text-[#795EAD]">
                   <GraduationCap size={15} />
@@ -574,7 +624,9 @@ export default function CourseDetail() {
                     <Sparkles size={22} className="text-[#795B36]" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-extrabold">What you'll learn</h3>
+                    <h3 className="text-lg font-extrabold">
+                      What you'll learn
+                    </h3>
                     <p className="mt-1 text-sm text-[#82756F]">
                       Key takeaways from this lesson
                     </p>
@@ -632,7 +684,10 @@ export default function CourseDetail() {
                       AI Generated Lesson Video
                     </h2>
                   </div>
-                  <Sparkles size={24} className="hidden text-[#FFAA66] sm:block" />
+                  <Sparkles
+                    size={24}
+                    className="hidden text-[#FFAA66] sm:block"
+                  />
                 </div>
 
                 <p className="mt-4 text-sm leading-7 text-[#82756F]">
@@ -665,11 +720,17 @@ export default function CourseDetail() {
 
                 {isBusy && (
                   <div className="mt-4 flex items-start gap-3 rounded-xl border border-[#E2D6F7] bg-white p-4">
-                    <RefreshCw size={18} className="mt-0.5 shrink-0 animate-spin text-[#9275CB]" />
+                    <RefreshCw
+                      size={18}
+                      className="mt-0.5 shrink-0 animate-spin text-[#9275CB]"
+                    />
                     <div>
-                      <p className="font-bold text-[#5E4988]">Creating your video</p>
+                      <p className="font-bold text-[#5E4988]">
+                        Creating your video
+                      </p>
                       <p className="mt-1 text-sm text-[#82756F]">
-                        Status: {lessonVideo.status || "queued"}. Please wait while your lesson video is being prepared.
+                        Status: {lessonVideo.status || "queued"}. Please wait
+                        while your lesson video is being prepared.
                       </p>
                     </div>
                   </div>
@@ -723,7 +784,9 @@ export default function CourseDetail() {
                     <PlayCircle size={22} className="text-[#795B36]" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-extrabold">Learn with YouTube</h2>
+                    <h2 className="text-xl font-extrabold">
+                      Learn with YouTube
+                    </h2>
                     <p className="mt-1 text-sm text-[#82756F]">
                       Explore more videos for this lesson
                     </p>
@@ -732,7 +795,10 @@ export default function CourseDetail() {
 
                 {videosLoading && (
                   <div className="flex items-center gap-3 rounded-xl bg-[#FFF8F0] p-4 text-sm text-[#82756F]">
-                    <RefreshCw size={17} className="animate-spin text-[#FF786B]" />
+                    <RefreshCw
+                      size={17}
+                      className="animate-spin text-[#FF786B]"
+                    />
                     Loading videos...
                   </div>
                 )}
@@ -750,7 +816,9 @@ export default function CourseDetail() {
                       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFE6A7]">
                         <Video size={23} className="text-[#795B36]" />
                       </div>
-                      <p className="mt-3 font-bold">No videos found for this lesson.</p>
+                      <p className="mt-3 font-bold">
+                        No videos found for this lesson.
+                      </p>
                       <p className="mt-1 text-sm text-[#82756F]">
                         Try again later or use the AI-generated lesson video.
                       </p>
