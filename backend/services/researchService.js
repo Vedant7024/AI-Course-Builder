@@ -1,93 +1,92 @@
 
+const axios = require("axios");
+
 const videoCache = new Map();
-const CACHE_MS = 6 * 60 * 60 * 1000;
+const CACHE_DURATION = 6 * 60 * 60 * 1000;
 
-function getBaseUrl() {
-  const base = process.env.SEARXNG_URL;
-
-  if (!base) {
-    throw new Error("SEARXNG_URL is missing");
-  }
-
-  return base.replace(/\/+$/, "");
-}
-
-async function searxSearch(params) {
-  const url = `${getBaseUrl()}/search?${new URLSearchParams({
-    ...params,
-    format: "json",
-  })}`;
-
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(25000),
-    headers: { Accept: "application/json" },
-  });
-
-  if (!response.ok) {
-    throw new Error(`SearXNG HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return Array.isArray(data.results) ? data.results : [];
-}
+const getBaseUrl = () => {
+  return (process.env.SEARXNG_URL || "https://ai-course-builder-searxng.onrender.com")
+    .replace(/\/+$/, "");
+};
 
 function extractVideoId(url = "") {
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const hostname = parsed.hostname.replace(/^www\./, "");
 
-    if (host === "youtu.be") {
+    if (hostname === "youtu.be") {
       return parsed.pathname.split("/").filter(Boolean)[0] || null;
     }
 
     if (
-      host === "youtube.com" ||
-      host.endsWith(".youtube.com") ||
-      host === "youtube-nocookie.com" ||
-      host.endsWith(".youtube-nocookie.com")
+      hostname === "youtube.com" ||
+      hostname === "m.youtube.com" ||
+      hostname === "youtube-nocookie.com"
     ) {
-      if (parsed.pathname === "/watch") {
+      if (parsed.searchParams.has("v")) {
         return parsed.searchParams.get("v");
       }
 
-      const parts = parsed.pathname.split("/").filter(Boolean);
+      const match = parsed.pathname.match(
+        /^\/(?:embed|shorts|live|v)\/([^/?]+)/
+      );
 
-      if (["embed", "shorts", "live"].includes(parts[0])) {
-        return parts[1] || null;
-      }
+      return match ? match[1] : null;
     }
+
+    return null;
   } catch {
     return null;
   }
-
-  return null;
 }
 
-function pickYouTubeVideos(results) {
+function pickYouTubeVideos(results = []) {
   const videos = [];
   const seen = new Set();
 
   for (const result of results) {
-    const id =
-      extractVideoId(result.url || "") ||
-      extractVideoId(result.iframe_src || "");
+    const url = result.url || "";
+    const iframeSrc = result.iframe_src || "";
 
-    if (!id || seen.has(id)) continue;
+    const videoId =
+      extractVideoId(url) ||
+      extractVideoId(iframeSrc);
 
-    seen.add(id);
+    if (!videoId || seen.has(videoId)) continue;
+
+    seen.add(videoId);
 
     videos.push({
-      videoId: id,
-      title: result.title || "YouTube tutorial",
-      url: `https://www.youtube.com/watch?v=${id}`,
-      thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
-      description: String(
-        result.content || result.description || ""
-      ).slice(0, 300),
+      videoId,
+      title: result.title || "YouTube Tutorial",
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      description: result.content || result.description || "",
     });
   }
 
   return videos;
+}
+
+async function searxSearch(query) {
+  const baseUrl = getBaseUrl();
+
+  const response = await axios.get(`${baseUrl}/search`, {
+    params: {
+      q: query,
+      format: "json",
+      language: "en",
+    },
+    timeout: 25000,
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "AICourseBuilder/1.0",
+    },
+  });
+
+  return Array.isArray(response.data?.results)
+    ? response.data.results
+    : [];
 }
 
 async function searchYouTubeVideos(query) {
@@ -98,53 +97,48 @@ async function searchYouTubeVideos(query) {
   const cacheKey = cleanQuery.toLowerCase();
   const cached = videoCache.get(cacheKey);
 
-  if (cached && Date.now() - cached.at < CACHE_MS) {
+  if (cached && Date.now() - cached.at < CACHE_DURATION) {
     return cached.data;
   }
 
-  const shortQuery = cleanQuery.split(/\s+/).slice(0, 8).join(" ");
-
-  // One SearXNG request per search.
-  const attempts = [
-    {
-      q: `${shortQuery} tutorial`,
-      categories: "videos",
-      language: "en",
-    },
-    {
-      q: `site:youtube.com/watch ${shortQuery}`,
-      language: "en",
-    },
+  const searchQueries = [
+    `${cleanQuery} tutorial`,
+    `${cleanQuery} full course`,
   ];
 
-  let found = [];
-  let lastError = null;
+  const collectedVideos = [];
+  const seenIds = new Set();
 
-  for (const params of attempts) {
+  for (const searchQuery of searchQueries) {
     try {
-      console.log("SearXNG query:", params.q);
+      console.log("Searching SearXNG:", searchQuery);
 
-      const results = await searxSearch(params);
+      const results = await searxSearch(searchQuery);
+      const extractedVideos = pickYouTubeVideos(results);
+
       console.log("SearXNG results:", results.length);
+      console.log("YouTube videos extracted:", extractedVideos.length);
 
-      found = pickYouTubeVideos(results);
-      console.log("Extracted YouTube videos:", found.length);
+      for (const video of extractedVideos) {
+        if (!seenIds.has(video.videoId)) {
+          seenIds.add(video.videoId);
+          collectedVideos.push(video);
+        }
 
-      if (found.length > 0) break;
-    } catch (error) {
-      lastError = error;
-      console.error("SearXNG search failed:", error.message);
-
-      // Do not hammer SearXNG after rate limiting or server errors.
-      if (/HTTP (429|502|503|504)/.test(error.message)) {
-        break;
+        if (collectedVideos.length >= 6) break;
       }
+
+      if (collectedVideos.length >= 6) break;
+    } catch (error) {
+      console.error(
+        "SearXNG search failed:",
+        error.response?.status || error.message
+      );
     }
   }
 
-  const finalVideos = found.slice(0, 6);
+  const finalVideos = collectedVideos.slice(0, 6);
 
-  // Cache only successful, non-empty results.
   if (finalVideos.length > 0) {
     videoCache.set(cacheKey, {
       at: Date.now(),
@@ -154,33 +148,33 @@ async function searchYouTubeVideos(query) {
 
   console.log("Final YouTube videos:", finalVideos.length);
 
-  if (finalVideos.length === 0 && lastError) {
-    console.error("SearXNG could not return video results.");
-  }
-
   return finalVideos;
 }
 
 async function searchResearch(topic) {
   const cleanTopic = String(topic || "").trim();
 
-  if (!cleanTopic) {
-    throw new Error("Research topic is required");
+  if (!cleanTopic) return [];
+
+  try {
+    const results = await searxSearch(cleanTopic);
+
+    return results.slice(0, 10).map((result) => ({
+      title: result.title || "Research Result",
+      url: result.url || "",
+      description: result.content || result.description || "",
+    }));
+  } catch (error) {
+    console.error(
+      "Research search failed:",
+      error.response?.status || error.message
+    );
+
+    return [];
   }
-
-  const results = await searxSearch({
-    q: cleanTopic,
-    language: "en",
-  });
-
-  return results.slice(0, 6).map((result) => ({
-    title: result.title || "",
-    url: result.url || "",
-    content: String(result.content || "").slice(0, 300),
-  }));
 }
 
 module.exports = {
-  searchResearch,
   searchYouTubeVideos,
+  searchResearch,
 };
