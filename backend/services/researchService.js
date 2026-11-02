@@ -157,26 +157,27 @@ async function searchYouTubeVideos(query) {
   return finalVideos;
 }
 
-async function searchResearch(topic) {
-  const cleanTopic = String(topic || "").trim();
-  if (!cleanTopic) return [];
+async function searxSearch(query) {
+  const baseUrl = (
+    process.env.SEARXNG_URL ||
+    "https://ai-course-builder-searxng.onrender.com"
+  ).replace(/\/+$/, "");
 
-  try {
-    const results = await searxSearch(cleanTopic);
+  const response = await fetch(
+    `${baseUrl}/search?${new URLSearchParams({
+      q: query,
+      format: "json",
+      language: "en",
+      categories: "general",
+    })}`,
+    { signal: AbortSignal.timeout(30000) }
+  );
 
-    return results.slice(0, 10).map((result) => ({
-      title: result.title || "Research Result",
-      url: result.url || "",
-      description: result.content || result.description || "",
-    }));
-  } catch (error) {
-    console.error(
-      "[Research Search] Failed:",
-      error.response?.status || error.message
-    );
-
-    return [];
+  if (!response.ok) {
+    throw new Error(`SearXNG error: ${response.status}`);
   }
+
+  return response.json();
 }
 
 module.exports = {
