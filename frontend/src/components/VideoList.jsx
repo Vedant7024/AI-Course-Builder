@@ -8,26 +8,28 @@ export default function VideoList({
 }) {
   const list = Array.isArray(videos) ? videos : [];
 
-  if (list.length === 0) {
-    return (
-      <div className="video-empty">
-        <h3>No videos found</h3>
-        <p>Try searching for this lesson again.</p>
-      </div>
-    );
+  const validVideos = list
+    .map((video) => {
+      const url = video.url || "";
+
+      const match = url.match(
+        /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|live\/)|youtu\.be\/)([^&?/]+)/
+      );
+
+      const videoId = video.videoId || match?.[1];
+
+      return videoId ? { ...video, videoId } : null;
+    })
+    .filter(Boolean);
+
+  if (validVideos.length === 0) {
+    return null;
   }
 
   return (
     <div className="video-grid">
-      {list.map((video, index) => {
-        const videoId =
-          video.videoId ||
-          video.url?.match(
-            /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([^&?/]+)/
-          )?.[1];
-
-        if (!videoId) return null;
-
+      {validVideos.map((video, index) => {
+        const videoId = video.videoId;
         const thumbnail =
           video.thumbnail ||
           `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
@@ -35,7 +37,10 @@ export default function VideoList({
         const isActive = activeId === videoId;
 
         return (
-          <article key={videoId || index} className="video-card">
+          <article
+            key={`${videoId}-${index}`}
+            className="video-card"
+          >
             <div className="video-frame">
               {isActive ? (
                 <iframe
