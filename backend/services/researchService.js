@@ -180,6 +180,12 @@ async function searxSearch(query) {
   return response.json();
 }
 
+
+async function searchResearch(query) {
+  const data = await searxSearch(query);
+  return data.results || [];
+}
+
 module.exports = {
   searchYouTubeVideos,
   searchResearch,
