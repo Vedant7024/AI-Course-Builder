@@ -32,7 +32,7 @@ function extractVideoId(url = "") {
 
       return match ? match[1] : null;
     }
-  } catch (error) {
+  } catch {
     return null;
   }
 
@@ -47,6 +47,7 @@ function pickYouTubeVideos(results = []) {
     const candidates = [
       result.url,
       result.iframe_src,
+      result.embed_src,
       result.embed_url,
     ].filter(Boolean);
 
@@ -105,9 +106,10 @@ async function searchYouTubeVideos(query) {
   }
 
   const queries = [
-    `site:youtube.com/watch ${cleanQuery} tutorial`,
-    `site:youtube.com/watch ${cleanQuery} full course`,
-    `site:youtube.com ${cleanQuery} tutorial`,
+    `${cleanQuery} YouTube tutorial`,
+    `site:youtube.com/watch ${cleanQuery}`,
+    `${cleanQuery} beginner tutorial video`,
+    `${cleanQuery} full course YouTube`,
   ];
 
   const videos = [];
@@ -115,19 +117,19 @@ async function searchYouTubeVideos(query) {
 
   for (const searchQuery of queries) {
     try {
-      console.log("SearXNG query:", searchQuery);
+      console.log("[YouTube Search] Query:", searchQuery);
 
       const results = await searxSearch(searchQuery);
       const extracted = pickYouTubeVideos(results);
 
-      console.log("Search results:", results.length);
-      console.log("Videos extracted:", extracted.length);
+      console.log("[YouTube Search] Results:", results.length);
+      console.log("[YouTube Search] Extracted:", extracted.length);
 
       for (const video of extracted) {
-        if (!seen.has(video.videoId)) {
-          seen.add(video.videoId);
-          videos.push(video);
-        }
+        if (seen.has(video.videoId)) continue;
+
+        seen.add(video.videoId);
+        videos.push(video);
 
         if (videos.length >= 6) break;
       }
@@ -135,7 +137,7 @@ async function searchYouTubeVideos(query) {
       if (videos.length >= 6) break;
     } catch (error) {
       console.error(
-        "YouTube search failed:",
+        "[YouTube Search] Failed:",
         error.response?.status || error.message
       );
     }
@@ -143,15 +145,15 @@ async function searchYouTubeVideos(query) {
 
   const finalVideos = videos.slice(0, 6);
 
-  // Cache only successful searches.
-  if (finalVideos.length) {
+  if (finalVideos.length > 0) {
     videoCache.set(cacheKey, {
       at: Date.now(),
       data: finalVideos,
     });
   }
 
-  console.log("Final videos:", finalVideos.length);
+  console.log("[YouTube Search] Final videos:", finalVideos.length);
+
   return finalVideos;
 }
 
@@ -169,9 +171,10 @@ async function searchResearch(topic) {
     }));
   } catch (error) {
     console.error(
-      "Research search failed:",
+      "[Research Search] Failed:",
       error.response?.status || error.message
     );
+
     return [];
   }
 }
